@@ -263,7 +263,7 @@ console.log("Firebase OK");
     <div class="rule-item"><span class="rule-icon">🍺</span><span>Si votre allié boit → <strong class="orange">vous buvez aussi</strong> (moitié).</span></div>
     <div class="rule-item"><span class="rule-icon">😈</span><span>Yann <strong class="red">n'a pas d'allié</strong>. Seul contre tous.</span></div>
   </div>
-  <button class="btn btn-primary w-full" onclick="nextAlliancePlayer()">C'est parti ! 👁️</button>
+  <button class="btn btn-primary w-full" onclick="openMyAllianceOverlay()">Voir mon allié 👁️</button>
 </div>
 
 <!-- ALLIANCE OVERLAY -->
@@ -635,12 +635,20 @@ function getCurrentQ(){
 // ALLIANCES
 // ============================================================
 function startAlliances(){G.allianceIdx=0;G.allianceRevealed=false;show('s-alliance-intro');}
-function nextAlliancePlayer(){
-  if(G.allianceIdx>=PLAYERS.length){finishAlliances();return;}
+
+// Ouvre l'overlay alliance pour le joueur courant seulement
+function openMyAllianceOverlay(){
   G.allianceRevealed=false;
-  const p=PLAYERS[G.allianceIdx];
-  document.getElementById('al-label').textContent='PASSE LE TÉLÉPHONE À';
-  document.getElementById('al-player').textContent=p.toUpperCase();
+  if(MP.code && MP.me){
+    // Mode multijoueur : chaque téléphone affiche uniquement son propre allié
+    document.getElementById('al-label').textContent='TON ALLIANCE SECRÈTE';
+    document.getElementById('al-player').textContent=MP.me.toUpperCase();
+  } else {
+    // Mode solo : flux séquentiel (on passe le téléphone)
+    if(G.allianceIdx>=PLAYERS.length){finishAlliances();return;}
+    document.getElementById('al-label').textContent='PASSE LE TÉLÉPHONE À';
+    document.getElementById('al-player').textContent=PLAYERS[G.allianceIdx].toUpperCase();
+  }
   document.getElementById('al-blurred').style.display='block';
   document.getElementById('al-blurred').textContent='Appuie pour révéler 👁️';
   document.getElementById('al-revealed').style.display='none';
@@ -649,17 +657,42 @@ function nextAlliancePlayer(){
   document.getElementById('al-done-btn').style.display='none';
   showOverlay('overlay-alliance');
 }
+
+// Mode solo uniquement : passer au joueur suivant
+function nextAlliancePlayer(){
+  G.allianceIdx++;
+  openMyAllianceOverlay();
+}
+
 function revealAlliance(){
   if(G.allianceRevealed)return;
   G.allianceRevealed=true;
-  const p=PLAYERS[G.allianceIdx];
-  const ally=ALLIANCES[p];
-  document.getElementById('al-blurred').style.display='none';
-  if(!ally){document.getElementById('al-yann').style.display='block';}
-  else{document.getElementById('al-ally').textContent=ally;document.getElementById('al-revealed').style.display='block';}
-  const isLast=G.allianceIdx===PLAYERS.length-1;
-  document.getElementById(isLast?'al-done-btn':'al-next-btn').style.display='block';
-  G.allianceIdx++;
+  if(MP.code && MP.me){
+    // Mode multijoueur : révèle uniquement l'allié du joueur connecté
+    const ally=ALLIANCES[MP.me];
+    document.getElementById('al-blurred').style.display='none';
+    if(!ally){document.getElementById('al-yann').style.display='block';}
+    else{document.getElementById('al-ally').textContent=ally;document.getElementById('al-revealed').style.display='block';}
+    if(MP.isHost){
+      // Arnaud lance la partie pour tout le monde
+      document.getElementById('al-done-btn').style.display='block';
+    } else {
+      // Autres joueurs : ferment l'overlay, attendent qu'Arnaud lance
+      const btn=document.getElementById('al-next-btn');
+      btn.textContent='J\'ai vu ✓ — En attente...';
+      btn.onclick=()=>hideOverlay('overlay-alliance');
+      btn.style.display='block';
+    }
+  } else {
+    // Mode solo : flux séquentiel original
+    const p=PLAYERS[G.allianceIdx];
+    const ally=ALLIANCES[p];
+    document.getElementById('al-blurred').style.display='none';
+    if(!ally){document.getElementById('al-yann').style.display='block';}
+    else{document.getElementById('al-ally').textContent=ally;document.getElementById('al-revealed').style.display='block';}
+    const isLast=G.allianceIdx===PLAYERS.length-1;
+    document.getElementById(isLast?'al-done-btn':'al-next-btn').style.display='block';
+  }
 }
 function finishAlliances(){hideOverlay('overlay-alliance');startChapter(0);}
 
