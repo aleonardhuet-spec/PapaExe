@@ -773,6 +773,13 @@ function showQuestion(){
 
   // Téléphones joueurs : pas de boutons d'action (sauf votes sur s-vote)
   if(MP.code && !MP.isHost){
+    // Questions privées pour Yann (défis, questions ouvertes) → les autres ne voient pas le contenu
+    if((q.isDefi || q.isOpen) && MP.me !== 'Yann'){
+      document.getElementById('q-text').textContent = '🎯 Question privée pour Yann';
+      document.getElementById('q-content').innerHTML =
+        `<div style="font-family:'Barlow Condensed',sans-serif;font-size:14px;color:var(--gray);`+
+        `text-align:center;padding:12px">Yann lit et répond — attendez sa réponse !</div>`;
+    }
     document.getElementById('q-action').innerHTML =
       `<div style="text-align:center;padding:12px;font-family:'Barlow Condensed',sans-serif;`+
       `font-size:14px;color:var(--gray)">👀 Résultat sur l'écran principal</div>`;
@@ -1410,14 +1417,14 @@ function autoReveal(q, votes){
       emoji='🤷'; title='Partagé !';
       drinks=[{who:'Tout le monde',what:'1 gorgée de confusion'}];
     }
-    showResult(emoji, title, drinks, false);
+    pushResult(emoji, title, drinks, votes);
   } else if(q.isVote){
     // VoteQ : vote pour un joueur
     const tally = {};
     voterKeys.forEach(p => { const k=votes[p]?.key; if(k) tally[k]=(tally[k]||0)+1; });
     const most = Object.entries(tally).sort((a,b)=>b[1]-a[1])[0]?.[0] || PLAYERS[0];
     addDrinks(most, 3);
-    showResult('⚖️','Le verdict est tombé !',[{who:most,what:'3 gorgées 🍺'}],false);
+    pushResult('⚖️','Le verdict est tombé !',[{who:most,what:'3 gorgées 🍺'}], votes);
   } else if(q.isVerdict){
     // Verdict : coupable ou pas
     const tally = {};
@@ -1426,9 +1433,9 @@ function autoReveal(q, votes){
     if(entries.length > 0 && entries[0][1] > voterKeys.length/2){
       const condemned = entries[0][0];
       addDrinks(condemned, 4);
-      showResult('🔨','COUPABLE !',[{who:condemned,what:'4 gorgées 🍺'},{who:'Sentence',what:q.sentence}],false);
+      pushResult('🔨','COUPABLE !',[{who:condemned,what:'4 gorgées 🍺'},{who:'Sentence',what:q.sentence}], votes);
     } else {
-      showResult('✅','Pas de consensus !\nTout le monde boit par défaut.',[{who:'Tout le monde',what:'2 gorgées'}],false);
+      pushResult('✅','Pas de consensus !\nTout le monde boit par défaut.',[{who:'Tout le monde',what:'2 gorgées'}], votes);
     }
   }
 }
