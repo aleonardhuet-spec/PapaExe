@@ -780,12 +780,24 @@ function showQuestion(){
 
   // Multijoueur : si l'écran requiert une réponse de tous → Firebase vote
   if(MP.code && MP.isHost && isAllMustAnswer(q)){
-    const voters = (MP.connectedPlayers || []).filter(p => p !== HOST_PLAYER);
-    if(voters.length > 0){
+    const allVoters = MP.connectedPlayers || [HOST_PLAYER];
+    if(allVoters.length > 0){
+      // Build Arnaud's vote UI
+      let hostVoteHTML = '';
+      if(q.situation){
+        hostVoteHTML = `
+          <button class="btn btn-green" id="hv-pass" onclick="hostVote('pass','✅ ÇA PASSE')">✅ ÇA PASSE</button>
+          <button class="btn btn-danger" id="hv-fail" onclick="hostVote('fail','❌ ÇA PASSE PAS')">❌ ÇA PASSE PAS</button>`;
+      } else if(q.isVerdict || q.isVote){
+        hostVoteHTML = `<div style="display:flex;flex-direction:column;gap:6px">${PLAYERS.map(p=>
+          `<button class="btn btn-dark btn-sm" onclick="hostVote('${p}','${p}')">${p}</button>`
+        ).join('')}</div>`;
+      }
       document.getElementById('q-action').innerHTML =
         `<div id="vote-waiting" style="background:var(--dark2);border-radius:10px;padding:14px;text-align:center;`+
         `width:100%;font-family:'Barlow Condensed',sans-serif;font-size:14px;color:var(--orange)">`+
-        `⏳ En attente des votes (0/${voters.length})...</div>`;
+        `⏳ En attente des votes (0/${allVoters.length})...</div>`+
+        `<div id="host-vote-btns" style="margin-top:10px;display:flex;flex-direction:column;gap:8px">${hostVoteHTML}</div>`;
       openVotePhase(q, CHAPTERS[G.chapterIdx].badge);
     }
   }
@@ -1332,7 +1344,7 @@ function isAllMustAnswer(q){
 // ── HOST: OPEN VOTE PHASE ──
 async function openVotePhase(q, chapterName){
   if(!MP.code || !MP.isHost) return;
-  const voters = (MP.connectedPlayers || []).filter(p => p !== HOST_PLAYER);
+  const voters = MP.connectedPlayers || [HOST_PLAYER];
   const voteRound = Date.now();
   await dbUpdate('sessions/'+MP.code, {
     status: 'voting',
@@ -1344,6 +1356,14 @@ async function openVotePhase(q, chapterName){
     votes: {}
   });
   watchForAllVotes(q, voters);
+}
+
+// ── HOST: VOTE (Arnaud vote comme les autres) ──
+async function hostVote(key, label){
+  if(!MP.code) return;
+  await dbUpdate('sessions/'+MP.code+'/votes', { [HOST_PLAYER]: { key, label } });
+  const btnDiv = document.getElementById('host-vote-btns');
+  if(btnDiv) btnDiv.innerHTML = `<div style="color:var(--green);font-family:'Barlow Condensed',sans-serif;font-size:15px;text-align:center">✅ Vote envoyé : ${label}</div>`;
 }
 
 // ── HOST: SURVEILLE LES VOTES — déclenche auto quand tous ont répondu ──
