@@ -771,6 +771,13 @@ function showQuestion(){
 
   show('s-question');
 
+  // Téléphones joueurs : pas de boutons d'action (sauf votes sur s-vote)
+  if(MP.code && !MP.isHost){
+    document.getElementById('q-action').innerHTML =
+      `<div style="text-align:center;padding:12px;font-family:'Barlow Condensed',sans-serif;`+
+      `font-size:14px;color:var(--gray)">👀 Résultat sur l'écran principal</div>`;
+  }
+
   // Multijoueur : si l'écran requiert une réponse de tous → Firebase vote
   if(MP.code && MP.isHost && isAllMustAnswer(q)){
     const voters = (MP.connectedPlayers || []).filter(p => p !== HOST_PLAYER);
@@ -1173,6 +1180,21 @@ function restartGame(){
 // L'animateur pilote. Les joueurs suivent et votent.
 // ================================================================
 
+// ── AUTO-AVANCE : compte à rebours sur les écrans résultat ──
+let _advTimer = null;
+function _startCountdown(secs, onDone, btnId, label){
+  _stopCountdown();
+  let t = secs;
+  const tick = () => {
+    const btn = document.getElementById(btnId);
+    if(btn) btn.textContent = `${label} (${t}s)`;
+    if(t-- <= 0){ _stopCountdown(); onDone(); }
+  };
+  tick();
+  _advTimer = setInterval(tick, 1000);
+}
+function _stopCountdown(){ if(_advTimer){ clearInterval(_advTimer); _advTimer = null; } }
+
 const MP = { code:null, isHost:false, me:null, unsubscribers:[] };
 function genCode(){ const c='ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; let s=''; for(let i=0;i<4;i++) s+=c[Math.floor(Math.random()*c.length)]; return s; }
 function dbRef(p){ return window.FB.ref(window.FB.db, p); }
@@ -1254,7 +1276,9 @@ function syncHostScreens(){
       _lastBroadcastScreen = id;
       // Push screen to Firebase (but not vote screen — that's handled separately)
       if(!['s-vote','s-session','s-lobby'].includes(id)){
-        dbUpdate('sessions/'+MP.code, { screen: id, screenType: 'host_controls_next' }).catch(()=>{});
+        const upd = { screen: id, screenType: 'host_controls_next' };
+        if(id === 's-question'){ upd.chapterIdx = G.chapterIdx; upd.qIdx = G.qIdx; }
+        dbUpdate('sessions/'+MP.code, upd).catch(()=>{});
       }
     }
   };
@@ -1266,14 +1290,16 @@ function listenSession(code){
     const s = snap.val();
     if(!s || MP.isHost) return;
 
-    // Follow host screen (except vote/result phases handled separately)
-    if(s.screen && !['s-vote','s-mresult'].includes(document.querySelector('.screen.active')?.id)){
-      if(s.screen !== document.querySelector('.screen.active')?.id){
-        // Don't override vote/result screens
-        const activeId = document.querySelector('.screen.active')?.id;
-        if(activeId !== 's-vote' && activeId !== 's-mresult'){
-          show(s.screen);
-        }
+    // Sync question state (indices)
+    if(s.chapterIdx !== undefined){ G.chapterIdx = s.chapterIdx; G.qIdx = s.qIdx || 0; }
+
+    // Follow host screen
+    const _activeId = document.querySelector('.screen.active')?.id;
+    if(s.screen && _activeId !== 's-vote' && _activeId !== 's-mresult' && s.screen !== _activeId){
+      if(s.screen === 's-question'){
+        showQuestion(); // re-rendu local avec les bons indices
+      } else {
+        show(s.screen);
       }
     }
 
@@ -1490,12 +1516,18 @@ function renderMultiResult(result){
   } else box.style.display = 'none';
 
   document.getElementById('mr-next-btn').style.display = MP.isHost ? 'block' : 'none';
-  document.getElementById('mr-wait-txt').style.display = MP.isHost ? 'none' : 'block';
+  const waitEl = document.getElementById('mr-wait-txt');
+  waitEl.style.display = MP.isHost ? 'none' : 'block';
+  if(!MP.isHost) waitEl.textContent = '⏳ Prochaine question dans quelques secondes...';
   show('s-mresult');
+
+  // Auto-avance pour l'hôte — plus besoin de taper "Question suivante →"
+  if(MP.isHost){ _startCountdown(7, hostNext, 'mr-next-btn', 'Question suivante →'); }
 }
 
 // ── HOST: NEXT QUESTION ──
 async function hostNext(){
+  _stopCountdown();
   await dbUpdate('sessions/'+MP.code, {
     status: 'playing',
     screenType: 'host_controls_next',
@@ -1511,7 +1543,10 @@ const _origShowResult = showResult;
 window.showResult = function(emoji, title, drinks, showRoue){
   _origShowResult(emoji, title, drinks, showRoue);
   if(MP.isHost && MP.code){
-    // Get votes from Firebase and push result
+    // "Suivant →" appelle hostNext (pas nextQuestion) pour sync Firebase
+    const rBtn = document.getElementById('r-next-btn');
+    if(rBtn) rBtn.onclick = () => { _stopCountdown(); hostNext(); };
+    // Push result → renderMultiResult → countdown démarre là
     dbGet('sessions/'+MP.code+'/votes').then(snap => {
       pushResult(emoji, title, drinks, snap.val()||{});
     });
